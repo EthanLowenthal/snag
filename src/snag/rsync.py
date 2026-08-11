@@ -85,7 +85,7 @@ def supports_progress2() -> bool:
 
 
 def _remote_spec(server: Server, path: str) -> str:
-    """`host:'/quoted/path'` — the path is expanded by the *remote* shell, so quote it."""
+    """`host:'/quoted/path'`, where the path is expanded by the *remote* shell: quote it."""
     if path in ("", ".", "~"):
         return f"{server.target}:"
     return f"{server.target}:{shlex.quote(path)}"

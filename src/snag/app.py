@@ -150,7 +150,7 @@ class FilePane(Vertical):
     def _cells(self, entry: Entry) -> tuple:
         style = entry_style(entry)
         name = Text(entry.name + ("/" if entry.is_dir else ""), style=style, no_wrap=True)
-        size = Text("—" if entry.is_dir else format_size(entry.size), justify="right", style="dim")
+        size = Text("-" if entry.is_dir else format_size(entry.size), justify="right", style="dim")
         return (self._mark_cell(entry), name, size, Text(format_mtime(entry.mtime), style="dim"))
 
     def _mark_cell(self, entry: Entry) -> Text:
@@ -240,7 +240,7 @@ class FilePane(Vertical):
         """A directory's entries for completion; None while a remote listing is in flight.
 
         Local listings are cheap enough to read on the spot. Remote ones go through the
-        same rsync as a real navigation, so they are fetched off-thread and remembered —
+        same rsync as a real navigation, so they are fetched off-thread and remembered,
         which makes walking back up a tree you have already seen instant.
         """
         if directory in self._dir_cache:
@@ -737,7 +737,7 @@ class ServerScreen(Screen):
 
     def compose(self) -> ComposeResult:
         yield Header()
-        yield Static(Text(" Pick a server — enter to connect", style="dim"), id="hint")
+        yield Static(Text(" Pick a server, enter to connect", style="dim"), id="hint")
         yield DataTable(cursor_type="row", zebra_stripes=True, id="servers")
         yield Footer()
 
@@ -764,7 +764,7 @@ class ServerScreen(Screen):
                 Text("ssh config" if server.source == "ssh" else "snag", style="dim italic"),
             )
         if not self.servers:
-            self.notify("No servers found — press 'a' to add one", severity="warning")
+            self.notify("No servers found, press 'a' to add one", severity="warning")
 
     def _current(self) -> Server | None:
         row = self.query_one("#servers", DataTable).cursor_row
@@ -792,7 +792,7 @@ class ServerScreen(Screen):
             return
         if server.source != "snag":
             self.notify(
-                "That host comes from ~/.ssh/config — remove it there", severity="warning"
+                "That host comes from ~/.ssh/config, remove it there", severity="warning"
             )
             return
         config.save_servers([s for s in self.servers if s.source == "snag" and s is not server])

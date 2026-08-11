@@ -1,4 +1,4 @@
-"""The path bar: bash's habits for getting somewhere — type it, tab it, let `~` mean home.
+"""The path bar: bash's habits for getting somewhere. Type it, tab it, let `~` mean home.
 
 Both sides of the browser use `/` separators (the local side is POSIX too), so every
 path in here goes through `posixpath` no matter which pane asked. Nothing in this module
@@ -26,7 +26,7 @@ MAX_MATCHES = 200
 
 
 def entry_style(entry: Entry) -> str:
-    """Directories blue, links purple — the same colours the tables use."""
+    """Directories blue, links purple: the same colours the tables use."""
     if entry.is_dir:
         return "bold #7dcfff"
     if entry.is_link:
@@ -87,7 +87,7 @@ class PathInput(Input):
         # No select-on-focus: the bar opens holding the current directory, and a
         # selected-then-replaced path would throw that away on the first keystroke.
         super().__init__(
-            placeholder="path — tab completes, ~ is home",
+            placeholder="path (tab completes, ~ is home)",
             select_on_focus=False,
             **kwargs,
         )
@@ -273,7 +273,7 @@ class PathInput(Input):
         return True
 
     def choose(self, index: int) -> None:
-        """Take a specific candidate — what a click on the popup means."""
+        """Take a specific candidate: what a click on the popup means."""
         head, matches = (
             self._cycle[0:2] if self._cycle is not None else (self._split()[0], self._candidates())
         )
@@ -348,7 +348,7 @@ class PathInput(Input):
             matches = self._candidates() or []
             if len(matches) != 1:
                 self.notify(
-                    f"{len(matches)} matches — pick one" if matches else f"No such path: {text}",
+                    f"{len(matches)} matches, pick one" if matches else f"No such path: {text}",
                     severity="warning",
                 )
                 return

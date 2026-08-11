@@ -1,14 +1,14 @@
 # snag
 
-A terminal file browser for snagging files off servers. Two panes — local on the left,
-remote on the right — and `c` to copy whatever is selected across, with live progress.
+A terminal file browser for snagging files off servers. Two panes: local on the left,
+remote on the right. Press `c` to copy whatever is selected across, with live progress.
 Every transfer is a real `rsync`, so resumes, permissions, and incremental syncs behave
 exactly the way you already expect.
 
 ```
 ┌─ LOCAL  ~/Downloads ──────────────┬─ REMOTE · node3  /data/runs ──────┐
 │ ..                                │ ..                                │
-│  archive/                      —  │  2026-08-10/                   —  │
+│  archive/                      -  │  2026-08-10/                   -  │
 │  notes.md                   2.1K  │ ▌capture.raw                1.2G  │
 │ ▌results.csv               48.0K  │  summary.json               812B  │
 ├───────────────────────────────────┴───────────────────────────────────┤
@@ -23,7 +23,7 @@ uv tool install git+https://github.com/EthanLowenthal/snag
 ```
 
 Either builds snag into its own isolated environment and puts a single `snag` executable
-on your `PATH` at `~/.local/bin` — nothing touches your system Python. If that directory
+on your `PATH` at `~/.local/bin`. Nothing touches your system Python. If that directory
 is not on your `PATH` yet, `uv tool update-shell` adds it.
 
 ```sh
@@ -53,9 +53,9 @@ does GNU rsync, and snag adapts its progress parsing to whichever it finds. Pyth
 
 snag merges two sources, so hosts you already use just show up:
 
-1. **`~/.ssh/config`** — every non-wildcard `Host` block, including `Include`d files.
+1. **`~/.ssh/config`**: every non-wildcard `Host` block, including `Include`d files.
    Aliases, keys, and jump hosts keep working because snag lets `ssh` resolve them.
-2. **`~/.config/snag/servers.toml`** — extra hosts, or overrides that add a default
+2. **`~/.config/snag/servers.toml`**: extra hosts, or overrides that add a default
    remote path to a host ssh already knows.
 
 ```toml
@@ -114,18 +114,18 @@ appear as you type and `tab` completes, the way a shell does.
 
 So a deep directory is `/`, a few letters, `tab`, a few more letters, `tab`, `enter`.
 `..` is not something to complete, so it folds into the path the moment you type it and
-leaves you a level up, still typing — type it twice to go up twice. A typed `~` starts the
+leaves you a level up, still typing; type it twice to go up twice. A typed `~` starts the
 path over from home the same way, wherever in the path you type it.
 
 `enter` goes wherever the bar names, whether or not you picked anything from the popup: a
 plain directory opens, a half-typed name that can only mean one thing is finished for you,
-and a *file* is a shortcut for "go to its directory and put the cursor on it" — what you
-want after pasting a path out of a log. A name that matches several things, or nothing at
+and a *file* is a shortcut for "go to its directory and put the cursor on it", which is
+what you want after pasting a path out of a log. A name that matches several things, or nothing at
 all, says so and leaves the pane where it is rather than taking it somewhere dead.
 
 Dotfiles stay out of the matches until you type the leading `.`, `$VARS` expand on the
 local side, and on the remote side `~` and every listing come from the same `rsync` a
-real navigation uses — fetched in the background and remembered, so a tree you have
+real navigation uses, fetched in the background and remembered, so a tree you have
 already walked completes instantly.
 
 ## Tests
@@ -136,7 +136,7 @@ uv pip install --group dev   # pytest and pytest-asyncio, once
 ```
 
 No network needed: the "remote" side is a local directory reached through a patched
-`_remote_spec`, so real `rsync` processes and the real Textual UI are driven end to end —
+`_remote_spec`, so real `rsync` processes and the real Textual UI are driven end to end:
 listings, marking, path-bar completion, a throttled transfer, cancel, and `--partial`
 resume with a byte-for-byte comparison. Each test gets its own scratch tree, config and
 state, so nothing one remembers leaks into the next.
@@ -148,10 +148,10 @@ state, so nothing one remembers leaks into the next.
 - **Sizing** runs `rsync --list-only -r` over the selection first, so a multi-file copy
   shows one honest percentage instead of restarting the bar per file.
 - **Progress** is parsed from `--info=progress2` on GNU rsync ≥ 3.1, and from plain
-  `--progress` on openrsync — where per-file byte counts are accumulated as each file
+  `--progress` on openrsync, where per-file byte counts are accumulated as each file
   is superseded, to reach the same cumulative number.
 - **Transfers** run `rsync -a --partial --progress` on a worker thread, so the UI stays
   responsive and a cancelled copy can be resumed later.
 - **Completion** reuses those listings. Every directory either pane has shown is cached,
-  and anything the path bar needs beyond them is listed on a worker thread — so typing
+  and anything the path bar needs beyond them is listed on a worker thread, so typing
   never blocks on the network, and the popup fills in when the answer arrives.

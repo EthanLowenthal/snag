@@ -4,7 +4,7 @@ All notable changes to snag are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.0.0] — 2026-08-11
+## [1.0.0] - 2026-08-11
 
 First stable release. Everything below is what snag does today.
 
@@ -29,14 +29,14 @@ First stable release. Everything below is what snag does today.
 - `enter` needs nothing picked from the popup: it goes wherever the bar names, and
   finishes a half-typed name that can only have meant one thing. A name matching
   several things, or nothing at all, is reported and leaves the pane where it is.
-- `enter` on a *file* jumps to its directory with the cursor on it — the useful
+- `enter` on a *file* jumps to its directory with the cursor on it, the useful
   behavior after pasting a path out of a log.
 - `..` folds into the path as soon as it is typed, leaving you a level up and still
   typing. A typed `~` restarts the path from home the same way, wherever it lands.
 - Dotfiles stay out of the matches until you type the leading `.`; `$VARS` expand on
   the local side.
 - **Completions never block on the network.** Directories either pane has shown are
-  cached, and anything else is listed on a worker thread — the popup fills in when
+  cached, and anything else is listed on a worker thread, so the popup fills in when
   the answer arrives.
 
 ### Transfers
@@ -44,13 +44,13 @@ First stable release. Everything below is what snag does today.
 - **Marking**: `space` marks or unmarks the entry under the cursor, `a` marks all or
   clears the marks. With nothing marked, `c` copies whatever the cursor is on.
 - **Every transfer is a real `rsync -a --partial --progress`**, run on a worker thread
-  so the UI stays responsive — resumes, permissions, and incremental syncs behave the
+  so the UI stays responsive. Resumes, permissions, and incremental syncs behave the
   way you already expect.
 - **One honest percentage per copy**: the selection is sized with
   `rsync --list-only -r` up front, so a multi-file copy shows a single bar instead of
   restarting per file.
 - **Progress on either rsync**: parsed from `--info=progress2` on GNU rsync ≥ 3.1, and
-  from plain `--progress` on macOS's openrsync — where per-file byte counts are
+  from plain `--progress` on macOS's openrsync, where per-file byte counts are
   accumulated as each file is superseded to reach the same cumulative number.
 - **Transfer panel** underneath the panes, listing each copy with its bar, current
   file, rate, and ETA. `x` cancels the running transfer (partial data is kept, so it
@@ -58,7 +58,7 @@ First stable release. Everything below is what snag does today.
 
 ### Servers
 
-- **`~/.ssh/config` hosts show up automatically** — every non-wildcard `Host` block,
+- **`~/.ssh/config` hosts show up automatically**: every non-wildcard `Host` block,
   including `Include`d files. Aliases, keys, and jump hosts keep working because snag
   lets `ssh` resolve them.
 - **`~/.config/snag/servers.toml`** adds extra hosts, or overrides an ssh-known host

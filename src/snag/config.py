@@ -230,8 +230,8 @@ def remember(server: Server, local: str, remote: str) -> None:
 def _first_existing_dir(*candidates: str | None) -> str:
     """First candidate that is still a directory, else the home directory.
 
-    A remembered path can go stale between sessions — the directory gets deleted, or an
-    external volume is not mounted — and a pane opening on a dead path is just broken.
+    A remembered path can go stale between sessions (the directory gets deleted, or an
+    external volume is not mounted), and a pane opening on a dead path is just broken.
     """
     for candidate in candidates:
         if not candidate:
