@@ -20,7 +20,7 @@ exactly the way you already expect.
 
 ```sh
 uv tool install .          # from a checkout
-uv tool install git+https://github.com/YOURNAME/snag
+uv tool install git+https://github.com/EthanLowenthal/snag
 ```
 
 Either builds snag into its own isolated environment and puts a single `snag` executable
