@@ -19,7 +19,6 @@ exactly the way you already expect.
 ## Install
 
 ```sh
-uv tool install .          # from a checkout
 uv tool install git+https://github.com/EthanLowenthal/snag
 ```
 
@@ -83,6 +82,8 @@ The directories each pane was last in are remembered per server in
 | --- | --- |
 | `enter` | Open directory (or `..` to go up) |
 | `backspace` | Up one directory |
+| `/` | Type a path (see below) |
+| `~` | Type a path, starting at home |
 | `tab` | Switch pane |
 | `space` | Mark / unmark the entry under the cursor |
 | `a` | Mark all / clear marks |
@@ -98,16 +99,47 @@ With nothing marked, `c` copies whatever the cursor is on. Direction follows foc
 the focused pane is always the source, so `c` from the right pane pulls down, and `c`
 from the left pane pushes up.
 
+## Typing a path
+
+`/` opens a path bar on the focused pane, holding the directory it is in, spelled out in
+full and ready to be extended. `~` opens the same bar at your home directory. Matches
+appear as you type and `tab` completes, the way a shell does.
+
+| Key | In the path bar |
+| --- | --- |
+| `tab` | Complete as far as the names agree; with a match picked, step into it and keep going |
+| `↑` `↓` | Choose between the matches at this level (also `ctrl+p` / `ctrl+n`) |
+| `enter` | Take the pane there. On a directory the bar stays open, now holding that path |
+| `esc` | Put the bar away |
+
+So a deep directory is `/`, a few letters, `tab`, a few more letters, `tab`, `enter`.
+`..` is not something to complete, so it folds into the path the moment you type it and
+leaves you a level up, still typing — type it twice to go up twice. A typed `~` starts the
+path over from home the same way, wherever in the path you type it.
+
+`enter` goes wherever the bar names, whether or not you picked anything from the popup: a
+plain directory opens, a half-typed name that can only mean one thing is finished for you,
+and a *file* is a shortcut for "go to its directory and put the cursor on it" — what you
+want after pasting a path out of a log. A name that matches several things, or nothing at
+all, says so and leaves the pane where it is rather than taking it somewhere dead.
+
+Dotfiles stay out of the matches until you type the leading `.`, `$VARS` expand on the
+local side, and on the remote side `~` and every listing come from the same `rsync` a
+real navigation uses — fetched in the background and remembered, so a tree you have
+already walked completes instantly.
+
 ## Tests
 
 ```sh
-.venv/bin/python tests/smoke.py
+uv pip install --group dev   # pytest and pytest-asyncio, once
+.venv/bin/python -m pytest
 ```
 
-No test framework and no network needed: the "remote" side is a local directory reached
-through a patched `_remote_spec`, so real `rsync` processes and the real Textual UI are
-driven end to end — listings, marking, a throttled transfer, cancel, and `--partial`
-resume with a byte-for-byte comparison. Exits non-zero if any check fails.
+No network needed: the "remote" side is a local directory reached through a patched
+`_remote_spec`, so real `rsync` processes and the real Textual UI are driven end to end —
+listings, marking, path-bar completion, a throttled transfer, cancel, and `--partial`
+resume with a byte-for-byte comparison. Each test gets its own scratch tree, config and
+state, so nothing one remembers leaks into the next.
 
 ## How it works
 
@@ -120,3 +152,6 @@ resume with a byte-for-byte comparison. Exits non-zero if any check fails.
   is superseded, to reach the same cumulative number.
 - **Transfers** run `rsync -a --partial --progress` on a worker thread, so the UI stays
   responsive and a cancelled copy can be resumed later.
+- **Completion** reuses those listings. Every directory either pane has shown is cached,
+  and anything the path bar needs beyond them is listed on a worker thread — so typing
+  never blocks on the network, and the popup fills in when the answer arrives.

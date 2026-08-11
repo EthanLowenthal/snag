@@ -23,12 +23,14 @@ from textual.widgets import (
     Header,
     Input,
     Label,
+    OptionList,
     ProgressBar,
     Static,
 )
 
 from . import config
 from .config import Server
+from .pathbar import Completions, PathInput, entry_style
 from .rsync import Entry, Progress, RsyncError, Transfer, local_list, measure, remote_home, remote_list
 
 UNITS = ["B", "K", "M", "G", "T", "P"]
@@ -79,6 +81,12 @@ class FilePane(Vertical):
         self.show_hidden = False
         self.status = "connecting…" if not autoload else ""
         self._generation = 0
+        self.home: str | None = None if side == "remote" else str(Path.home())
+        # Listings the path bar completes against, keyed by absolute directory.
+        self._dir_cache: dict[str, list[Entry]] = {}
+        self._fetching: set[str] = set()
+        self._home_pending = False
+        self._loading = False
 
     @property
     def is_remote(self) -> bool:
@@ -88,8 +96,14 @@ class FilePane(Vertical):
     def table(self) -> DataTable:
         return self.query_one(DataTable)
 
+    @property
+    def path_input(self) -> PathInput:
+        return self.query_one(PathInput)
+
     def compose(self) -> ComposeResult:
         yield Static("", classes="pane-title")
+        yield PathInput(self, classes="path-input")
+        yield Completions(classes="completions")
         yield DataTable(cursor_type="row", zebra_stripes=True)
         yield Static("", classes="pane-status")
 
@@ -103,12 +117,22 @@ class FilePane(Vertical):
         if self.autoload:
             self.reload()
 
+    def on_resize(self) -> None:
+        self._render_chrome()  # how much of the path fits depends on the width
+
     # ---------------------------------------------------------- rendering
+
+    def _shortened(self, used: int) -> str:
+        """Trim a path from the left: the deep end is what says where you are."""
+        room = (self.size.width or 82) - 2 - used  # 2 for the pane's border
+        if len(self.path) <= room or room < 12:
+            return self.path
+        return "…" + self.path[-(room - 1) :]
 
     def _render_chrome(self) -> None:
         label = "LOCAL" if not self.is_remote else f"REMOTE · {self.server.name}"
-        title = Text(f" {label} ", style="reverse bold")
-        title.append(f" {self.path}", style="none")
+        title = Text(f" {label} ", style="reverse bold", no_wrap=True)
+        title.append(f" {self._shortened(len(label) + 3)}", style="none")
         self.query_one(".pane-title", Static).update(title)
 
         bits = []
@@ -124,12 +148,7 @@ class FilePane(Vertical):
         self.query_one(".pane-status", Static).update(Text(" " + "  ".join(bits), style="dim"))
 
     def _cells(self, entry: Entry) -> tuple:
-        if entry.is_dir:
-            style = "bold #7dcfff"
-        elif entry.is_link:
-            style = "italic #bb9af7"
-        else:
-            style = ""
+        style = entry_style(entry)
         name = Text(entry.name + ("/" if entry.is_dir else ""), style=style, no_wrap=True)
         size = Text("—" if entry.is_dir else format_size(entry.size), justify="right", style="dim")
         return (self._mark_cell(entry), name, size, Text(format_mtime(entry.mtime), style="dim"))
@@ -165,6 +184,8 @@ class FilePane(Vertical):
         self.status = "loading…"
         self._render_chrome()
         self._generation += 1
+        self._loading = True
+        self._dir_cache.pop(self.path, None)  # a refresh should re-read for completion too
         self._load(self._generation, keep)
 
     @work(thread=True)
@@ -185,9 +206,93 @@ class FilePane(Vertical):
         self.entries = entries
         self.marked.clear()
         self.status = error
+        self._loading = False
+        if not error:
+            self._dir_cache[self.path] = entries
         self._populate(keep)
+        self.path_input.listings_arrived()  # a path bar left open follows the pane
         if error:
             self.app.notify(error, title=f"{self.side} listing failed", severity="error")
+
+    # ------------------------------------------------- completion listings
+
+    def completion_home(self) -> str | None:
+        """Where `~` points, fetched in the background the first time a remote asks."""
+        if self.home is None and not self._home_pending:
+            self._home_pending = True
+            self._fetch_home()
+        return self.home
+
+    @work(thread=True)
+    def _fetch_home(self) -> None:
+        try:
+            home = remote_home(self.server)
+        except RsyncError:
+            home = "/"  # unreachable: at least let `~` mean something typeable
+        self.app.call_from_thread(self._home_arrived, home)
+
+    def _home_arrived(self, home: str) -> None:
+        self.home = home
+        self._home_pending = False
+        self.path_input.listings_arrived()
+
+    def completion_entries(self, directory: str) -> list[Entry] | None:
+        """A directory's entries for completion; None while a remote listing is in flight.
+
+        Local listings are cheap enough to read on the spot. Remote ones go through the
+        same rsync as a real navigation, so they are fetched off-thread and remembered —
+        which makes walking back up a tree you have already seen instant.
+        """
+        if directory in self._dir_cache:
+            return self._dir_cache[directory]
+        if self._loading and directory == self.path:
+            return None  # the pane is already listing exactly this; no second rsync
+        if not self.is_remote:
+            try:
+                entries = local_list(Path(directory))
+            except RsyncError:
+                entries = []
+            self._dir_cache[directory] = entries
+            return entries
+        if directory not in self._fetching:
+            self._fetching.add(directory)
+            self._fetch_dir(directory)
+        return None
+
+    @work(thread=True)
+    def _fetch_dir(self, directory: str) -> None:
+        try:
+            entries = remote_list(self.server, directory)
+        except RsyncError:
+            entries = []  # a path that will not list simply offers no completions
+        self.app.call_from_thread(self._dir_fetched, directory, entries)
+
+    def _dir_fetched(self, directory: str, entries: list[Entry]) -> None:
+        self._fetching.discard(directory)
+        self._dir_cache[directory] = entries
+        self.path_input.listings_arrived()
+
+    def forget_listings(self) -> None:
+        """Drop the cache, so an explicit refresh re-reads what completion offers too."""
+        self._dir_cache.clear()
+
+    # ---------------------------------------------------------- the path bar
+
+    def open_path_bar(self, value: str = "") -> None:
+        self.path_input.open(value)
+
+    def on_path_input_go(self, event: PathInput.Go) -> None:
+        event.stop()
+        if event.keep and event.keep.startswith(".") and not self.show_hidden:
+            self.show_hidden = True  # otherwise the cursor has no row to land on
+        self.go_to(event.path, keep=event.keep)
+
+    def on_path_input_closed(self, event: PathInput.Closed) -> None:
+        self.table.focus()  # left to bubble: the screen swaps its hint line on it too
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        event.stop()
+        self.path_input.choose(event.option_index)
 
     # ----------------------------------------------------------- navigation
 
@@ -333,15 +438,21 @@ class TransferPanel(VerticalScroll):
 
 
 class BrowserScreen(Screen):
+    BROWSE_HINT = " enter open · space mark · c copy to other pane · backspace up · / type a path"
+    PATH_HINT = " tab complete · ↑↓ pick a match · enter go there · .. up a level · esc done"
+
     BINDINGS = [
-        Binding("tab", "switch_pane", "Pane", priority=True),
-        Binding("shift+tab", "switch_pane", "Pane", show=False, priority=True),
+        Binding("tab", "switch_pane(1)", "Pane", priority=True),
+        Binding("shift+tab", "switch_pane(-1)", "Pane", show=False, priority=True),
         # space/backspace/enter are spelled out in the hint bar, so keep them out of
         # the footer to stop it clipping on narrow terminals.
         Binding("space", "mark", "Mark", show=False),
         Binding("a", "mark_all", "Mark all"),
         Binding("c", "copy", "Copy →"),
         Binding("backspace", "up", "Up", show=False),
+        # The path bar is spelled out in the hint bar, so keep it out of the footer too.
+        Binding("slash", "path", "Path", show=False),
+        Binding("tilde", "home", "Home", show=False),
         Binding("r", "refresh", "Refresh"),
         Binding("full_stop", "hidden", "Hidden"),
         Binding("x", "cancel", "Cancel"),
@@ -368,10 +479,7 @@ class BrowserScreen(Screen):
                 "remote", self.server, self.server.remote, autoload=False, id="remote"
             )
         yield TransferPanel(id="transfers")
-        yield Static(
-            Text(" enter open · space mark · c copy to other pane · backspace up", style="dim"),
-            id="hint",
-        )
+        yield Static(Text(self.BROWSE_HINT, style="dim"), id="hint")
         yield Footer()
 
     def on_mount(self) -> None:
@@ -381,6 +489,15 @@ class BrowserScreen(Screen):
 
     def on_file_pane_path_changed(self, event: FilePane.PathChanged) -> None:
         self.paths[event.side] = event.path
+
+    def _hint(self, text: str) -> None:
+        self.query_one("#hint", Static).update(Text(text, style="dim"))
+
+    def on_path_input_opened(self, event: PathInput.Opened) -> None:
+        self._hint(self.PATH_HINT)
+
+    def on_path_input_closed(self, event: PathInput.Closed) -> None:
+        self._hint(self.BROWSE_HINT)
 
     def on_unmount(self) -> None:
         config.remember(self.server, self.paths["local"], self.paths["remote"])
@@ -419,6 +536,7 @@ class BrowserScreen(Screen):
             except RsyncError as exc:
                 self.app.call_from_thread(self._remote_failed, str(exc))
                 return
+            pane.home = home  # so the path bar can expand `~` without asking again
             path = home if path in ("", ".", "~") else posixpath.normpath(
                 posixpath.join(home, path.removeprefix("~/"))
             )
@@ -435,8 +553,23 @@ class BrowserScreen(Screen):
     def on_data_table_row_selected(self) -> None:
         self.focused_pane.open_current()
 
-    def action_switch_pane(self) -> None:
+    def action_switch_pane(self, step: int = 1) -> None:
+        """tab completes while a path bar is open, and switches panes the rest of the time."""
+        if isinstance(self.focused, PathInput):
+            self.focused.action_complete(step)
+            return
         self.other_pane.table.focus()
+
+    def action_path(self) -> None:
+        """Open on the directory the pane is in, spelled out and ready to be extended."""
+        pane = self.focused_pane
+        pane.open_path_bar(pane.path.rstrip("/") + "/")
+
+    def action_home(self) -> None:
+        pane = self.focused_pane
+        home = pane.completion_home()
+        # A remote home we have yet to ask for opens as `~/` and expands when it answers.
+        pane.open_path_bar(home.rstrip("/") + "/" if home else "~/")
 
     def action_mark(self) -> None:
         self.focused_pane.toggle_mark()
@@ -450,6 +583,7 @@ class BrowserScreen(Screen):
     def action_refresh(self) -> None:
         pane = self.focused_pane
         entry = pane.current()
+        pane.forget_listings()
         pane.reload(keep=entry.name if entry else None)
 
     def action_hidden(self) -> None:

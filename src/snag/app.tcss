@@ -43,6 +43,41 @@ FilePane DataTable {
     background: $surface;
 }
 
+/* ---------------------------------------------------------------- path bar */
+
+FilePane .path-input {
+    height: 1;
+    border: none;
+    padding: 0 1;
+    background: $boost;
+}
+
+/* The popup floats: `overlay` keeps it out of the layout so the table below it
+   neither shrinks nor scrolls when candidates appear. */
+FilePane .completions {
+    width: 1fr;
+    height: auto;
+    max-height: 12;
+    overlay: screen;
+    constrain: none inside;
+    border: none;
+    /* A rule along the bottom so the floating list reads as a list and not as rows
+       of the table it is covering. */
+    border-bottom: solid $accent-darken-1;
+    padding: 0;
+    background: $panel;
+    scrollbar-size-vertical: 1;
+}
+
+FilePane .completions > .option-list--option {
+    padding: 0 1;
+}
+
+FilePane .completions > .option-list--option-highlighted {
+    background: $accent;
+    color: $text;
+}
+
 /* -------------------------------------------------------------- transfers */
 
 #transfers {
