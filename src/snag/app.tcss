@@ -1,0 +1,127 @@
+Screen {
+    background: $surface;
+}
+
+#hint {
+    height: 1;
+    padding: 0 1;
+}
+
+/* ------------------------------------------------------------------ panes */
+
+#panes {
+    height: 1fr;
+}
+
+FilePane {
+    width: 1fr;
+    border: round $panel;
+    padding: 0;
+}
+
+FilePane:focus-within {
+    border: round $accent;
+}
+
+FilePane .pane-title {
+    height: 1;
+    background: $panel;
+    color: $text;
+}
+
+FilePane:focus-within .pane-title {
+    background: $accent-darken-1;
+}
+
+FilePane .pane-status {
+    height: 1;
+    background: $panel-darken-1;
+}
+
+FilePane DataTable {
+    height: 1fr;
+    background: $surface;
+}
+
+/* -------------------------------------------------------------- transfers */
+
+#transfers {
+    max-height: 6;
+    height: auto;
+    border-top: solid $panel;
+    background: $panel-darken-1;
+}
+
+TransferRow {
+    height: 1;
+    width: 100%;
+}
+
+TransferRow .xfer-label {
+    width: 34;
+    padding: 0 1;
+    content-align: left middle;
+}
+
+TransferRow .xfer-bar {
+    width: 1fr;
+}
+
+TransferRow .xfer-status {
+    width: 34;
+    padding: 0 1;
+    content-align: right middle;
+    text-align: right;
+}
+
+/* ----------------------------------------------------------------- dialog */
+
+AddServerScreen {
+    align: center middle;
+}
+
+#dialog {
+    width: 62;
+    height: auto;
+    max-height: 90%;
+    padding: 1 2;
+    background: $panel;
+    border: thick $accent;
+}
+
+/* Compact fields: seven stacked, bordered Inputs would overflow a short terminal. */
+.field-row {
+    height: 1;
+    margin-bottom: 1;
+}
+
+#dialog Input {
+    border: none;
+    height: 1;
+    width: 1fr;
+    padding: 0 1;
+    background: $boost;
+}
+
+#dialog-title {
+    width: 100%;
+    text-align: center;
+    text-style: bold;
+    padding-bottom: 1;
+}
+
+.field-label {
+    width: 15;
+    color: $text-muted;
+    content-align: left middle;
+}
+
+#dialog-buttons {
+    height: auto;
+    padding-top: 1;
+    align: right middle;
+}
+
+#dialog-buttons Button {
+    margin-left: 2;
+}
