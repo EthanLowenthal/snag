@@ -1,6 +1,6 @@
 [project]
 name = "snag"
-version = "1.0.0"
+version = "1.0.1"
 description = "A TUI file browser for snagging files off servers over rsync"
 readme = "README.md"
 requires-python = ">=3.11"

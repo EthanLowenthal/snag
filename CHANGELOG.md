@@ -4,6 +4,26 @@ All notable changes to snag are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1] - 2026-08-12
+
+### Added
+
+- **A command line.** `snag` with arguments reads them the way `cp` and `rsync` do:
+  sources first, destination last, with a `server:` prefix naming a host from the
+  list. `snag node3:/data/runs/capture.raw ~/Downloads` opens both panes on those
+  directories, puts the cursor on the file, and starts pulling it immediately.
+  `snag ~/patch.diff node3:/srv/incoming` pushes the same way. `esc` still returns to
+  the server list, and `x` cancels the copy like any other.
+- **Locations without a copy.** `snag node3` opens a server where you left off,
+  `snag node3:/data/runs` opens a directory, and `snag node3:/data/runs/capture.raw`
+  opens the directory holding a file with the cursor on it — the server is asked which
+  of the two it is, so no guessing from the spelling. A local path on its own picks the
+  directory the local pane starts in, whichever server you then connect to.
+- **Server shorthands.** Any fragment that can only mean one known host is enough:
+  `b01:` reaches `build01.example.com`. An ambiguous one lists what it could have meant.
+- `snag --help` documents the above; a command line snag cannot act on is reported
+  before the UI starts rather than after.
+
 ## [1.0.0] - 2026-08-11
 
 First stable release. Everything below is what snag does today.
@@ -79,4 +99,5 @@ First stable release. Everything below is what snag does today.
 - `rsync` must exist locally and on each server; macOS's built-in `openrsync` and GNU
   rsync both work, and snag adapts its progress parsing to whichever it finds.
 
+[1.0.1]: https://github.com/EthanLowenthal/snag/releases/tag/v1.0.1
 [1.0.0]: https://github.com/EthanLowenthal/snag/releases/tag/v1.0.0

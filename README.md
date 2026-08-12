@@ -6,7 +6,7 @@ Every transfer is a real `rsync`, so resumes, permissions, and incremental syncs
 exactly the way you already expect.
 
 ```
-┌─ LOCAL  ~/Downloads ──────────────┬─ REMOTE · node3  /data/runs ──────┐
+┌─ LOCAL  ~/Downloads ──────────────┬─ REMOTE · build01  /data/runs ────┐
 │ ..                                │ ..                                │
 │  archive/                      -  │  2026-08-10/                   -  │
 │  notes.md                   2.1K  │ ▌capture.raw                1.2G  │
@@ -76,6 +76,34 @@ Press `a` on the server list to add one through a form instead of editing the fi
 The directories each pane was last in are remembered per server in
 `~/.local/state/snag/state.json`, so reconnecting drops you back where you left off.
 
+## From the shell
+
+`snag` on its own is the server list. Give it paths and it reads them the way `cp` and
+`rsync` do — sources first, destination last — opening on them and, when there are two
+sides to it, starting the copy on arrival.
+
+```sh
+snag                                       # the server list
+snag build01                                 # that server, where you left off
+snag build01:/data/runs                      # open there
+snag build01:/data/runs/capture.raw          # open on its directory, cursor on the file
+snag build01:/data/runs/capture.raw ~/Downloads   # …and pull it now
+snag build01:/data/{a,b}.bin ~/Downloads     # several sources, one transfer
+snag ~/patch.diff build01:/srv/incoming      # push, same rules the other way round
+```
+
+The server is any host the list shows, and any shorthand that can only mean one of them
+will do, so `b01:` reaches `build01.example.com`. One side of a copy names a server and the
+other does not — snag copies between a server and this machine, never between two
+servers. A copy starts as soon as the connection is up, with both panes already pointed
+at it, so `x` cancels and `esc` still goes back to the server list.
+
+A trailing slash means "this directory"; without one, a path puts the cursor on what it
+names, and a remote path is resolved against the server so that `build01:/data/runs` opens
+the directory while `build01:/data/runs/capture.raw` opens the directory holding it. Local
+paths take `~`, `$VARS`, and relatives. Remote ones may be relative to the login
+directory. `snag --help` prints the short version of all this.
+
 ## Keys
 
 | Key | Action |
@@ -137,8 +165,9 @@ uv pip install --group dev   # pytest and pytest-asyncio, once
 
 No network needed: the "remote" side is a local directory reached through a patched
 `_remote_spec`, so real `rsync` processes and the real Textual UI are driven end to end:
-listings, marking, path-bar completion, a throttled transfer, cancel, and `--partial`
-resume with a byte-for-byte comparison. Each test gets its own scratch tree, config and
+listings, marking, path-bar completion, a throttled transfer, cancel, `--partial`
+resume with a byte-for-byte comparison, and a command line that lands on a path and
+pulls a file without a keystroke. Each test gets its own scratch tree, config and
 state, so nothing one remembers leaks into the next.
 
 ## How it works

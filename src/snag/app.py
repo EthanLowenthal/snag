@@ -29,6 +29,7 @@ from textual.widgets import (
 )
 
 from . import config
+from .cli import Start, expand_remote
 from .config import Server
 from .pathbar import Completions, PathInput, entry_style
 from .rsync import Entry, Progress, RsyncError, Transfer, local_list, measure, remote_home, remote_list
@@ -69,12 +70,14 @@ class FilePane(Vertical):
             self.side = side
             self.path = path
 
-    def __init__(self, side: str, server: Server, path: str, autoload: bool = True, **kwargs):
+    def __init__(self, side: str, server: Server, path: str, autoload: bool = True,
+                 keep: str | None = None, **kwargs):
         super().__init__(**kwargs)
         self.side = side
         self.server = server
         self.path = path
         self.autoload = autoload
+        self.keep = keep  # entry to put the cursor on once the first listing lands
         self.entries: list[Entry] = []
         self.rows: list[Entry | None] = []  # index 0 is the ".." row
         self.marked: set[str] = set()
@@ -115,7 +118,9 @@ class FilePane(Vertical):
         table.add_column("Modified", width=13)
         self._render_chrome()
         if self.autoload:
-            self.reload()
+            if self.keep and self.keep.startswith("."):
+                self.show_hidden = True  # otherwise the cursor has no row to land on
+            self.reload(keep=self.keep)
 
     def on_resize(self) -> None:
         self._render_chrome()  # how much of the path fits depends on the width
@@ -271,6 +276,10 @@ class FilePane(Vertical):
         self._fetching.discard(directory)
         self._dir_cache[directory] = entries
         self.path_input.listings_arrived()
+
+    def remember_listing(self, directory: str, entries: list[Entry]) -> None:
+        """Keep a listing someone else already paid for, so completion has it too."""
+        self._dir_cache[directory] = entries
 
     def forget_listings(self) -> None:
         """Drop the cache, so an explicit refresh re-reads what completion offers too."""
@@ -461,9 +470,16 @@ class BrowserScreen(Screen):
         Binding("q", "quit_app", "Quit"),
     ]
 
-    def __init__(self, server: Server):
+    def __init__(self, server: Server, start: Start | None = None):
         super().__init__()
-        self.server = config.with_remembered(server)
+        # A command line overrides where the panes open, and may ask for a copy on arrival.
+        self.start = start or Start()
+        remembered = config.with_remembered(server)
+        self.server = replace(
+            remembered,
+            local=self.start.local or remembered.local,
+            remote=self.start.remote or remembered.remote,
+        )
         # Mirrored from the panes as they navigate: on unmount the panes are already
         # pruned, so the screen cannot ask them where they were.
         self.paths = {
@@ -474,7 +490,10 @@ class BrowserScreen(Screen):
     def compose(self) -> ComposeResult:
         yield Header()
         with Horizontal(id="panes"):
-            yield FilePane("local", self.server, self.paths["local"], id="local")
+            yield FilePane(
+                "local", self.server, self.paths["local"], keep=self.start.local_keep,
+                id="local",
+            )
             yield FilePane(
                 "remote", self.server, self.server.remote, autoload=False, id="remote"
             )
@@ -527,20 +546,76 @@ class BrowserScreen(Screen):
 
     @work(thread=True)
     def _resolve_remote(self) -> None:
-        """Turn a relative/`~` remote path into an absolute one before the first listing."""
+        """Settle the remote side before the first listing.
+
+        `~` and relative paths need the login directory, and a path off the command
+        line may name a file rather than the directory to open. Both answers come from
+        the server, so they are worth having before the pane goes anywhere.
+        """
         pane = self.remote_pane
         path = pane.path
-        if not path.startswith("/"):
+        sources = list(self.start.sources) if self.start.from_remote else []
+        if not path.startswith("/") or any(not s.startswith("/") for s in sources):
             try:
                 home = remote_home(self.server)
             except RsyncError as exc:
                 self.app.call_from_thread(self._remote_failed, str(exc))
                 return
             pane.home = home  # so the path bar can expand `~` without asking again
-            path = home if path in ("", ".", "~") else posixpath.normpath(
-                posixpath.join(home, path.removeprefix("~/"))
-            )
-        self.app.call_from_thread(pane.go_to, path)
+            path = expand_remote(home, path)
+            sources = [expand_remote(home, s) for s in sources]
+
+        keep, listing = self.start.remote_keep, None
+        if self.start.probe:
+            path, keep, listing = self._probe(path)
+        self.app.call_from_thread(self._remote_ready, path, keep, listing, sources)
+
+    def _probe(self, path: str) -> tuple[str, str | None, list[Entry] | None]:
+        """Read a command-line path the way the path bar reads one.
+
+        A file means its directory, with the cursor on it. Only a listing of the parent
+        can tell a file from a directory, and that listing is worth keeping either way.
+        """
+        trimmed = path.rstrip("/")
+        parent = posixpath.dirname(trimmed)
+        if not trimmed or not parent:
+            return path, None, None
+        try:
+            entries = remote_list(self.server, parent)
+        except RsyncError:
+            return path, None, None  # unreadable parent: let the pane report the path itself
+        name = posixpath.basename(trimmed)
+        match = next((e for e in entries if e.name == name), None)
+        if match is not None and (match.is_dir or match.is_link):
+            return path, None, None
+        return parent, name, entries
+
+    def _remote_ready(
+        self, path: str, keep: str | None, listing: list[Entry] | None, sources: list[str]
+    ) -> None:
+        pane = self.remote_pane
+        if listing is not None:
+            pane.remember_listing(path, listing)
+        if keep and keep.startswith("."):
+            pane.show_hidden = True
+        pane.go_to(path, keep=keep)
+        if self.start.copies:
+            self._start_requested_copy(sources)
+
+    def _start_requested_copy(self, remote_sources: list[str]) -> None:
+        """Run the copy the command line asked for, now that the remote side is known."""
+        from_remote = self.start.from_remote
+        sources = remote_sources if from_remote else list(self.start.sources)
+        source_pane = self.remote_pane if from_remote else self.local_pane
+        dest = self.local_pane if from_remote else self.remote_pane
+        self._copy(sources, self._label(sources), from_remote, dest)
+        source_pane.table.focus()
+
+    @staticmethod
+    def _label(sources: list[str]) -> str:
+        if len(sources) == 1:
+            return posixpath.basename(sources[0].rstrip("/")) or sources[0]
+        return f"{len(sources)} items"
 
     def _remote_failed(self, message: str) -> None:
         pane = self.remote_pane
@@ -617,9 +692,14 @@ class BrowserScreen(Screen):
 
         paths = [source.abs_path(e) for e in entries]
         name = entries[0].name if len(entries) == 1 else f"{len(entries)} items"
-        arrow = "←" if source.is_remote else "→"
+        self._copy(paths, name, source.is_remote, dest)
+
+    def _copy(
+        self, sources: list[str], name: str, from_remote: bool, dest: FilePane
+    ) -> None:
+        arrow = "←" if from_remote else "→"
         transfer = Transfer(
-            self.server, from_remote=source.is_remote, sources=paths, dest=dest.path
+            self.server, from_remote=from_remote, sources=sources, dest=dest.path
         )
         row = TransferRow(f"{arrow} {name}", transfer)
         self.query_one(TransferPanel).add(row)
@@ -773,7 +853,7 @@ class ServerScreen(Screen):
     def on_data_table_row_selected(self) -> None:
         server = self._current()
         if server:
-            self.app.push_screen(BrowserScreen(server))
+            self.app.push_screen(BrowserScreen(server, self.app.take_start()))
 
     def action_add(self) -> None:
         def saved(server: Server | None) -> None:
@@ -807,6 +887,19 @@ class SnagApp(App):
     CSS_PATH = "app.tcss"
     TITLE = "snag"
 
+    def __init__(self, start: Start | None = None, **kwargs):
+        super().__init__(**kwargs)
+        self.start = start
+
+    def take_start(self) -> Start | None:
+        """Hand the command line to the first browser opened, and only to that one."""
+        start, self.start = self.start, None
+        return start
+
     def on_mount(self) -> None:
         self.theme = "tokyo-night"
         self.push_screen(ServerScreen())
+        # A command line that named a server goes straight there; escape still comes
+        # back to the list. One that named only a local path waits for a server to pick.
+        if self.start and self.start.server:
+            self.push_screen(BrowserScreen(self.start.server, self.take_start()))
