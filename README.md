@@ -120,12 +120,20 @@ directory. `snag --help` prints the short version of all this.
 | `X` | Clear finished transfers |
 | `r` | Refresh the focused pane |
 | `.` | Show/hide dotfiles |
+| `s` | Sort the focused pane: name → size → kind → modified, then round again |
+| `S` | Reverse the current sort |
 | `esc` | Back to the server list |
 | `q` | Quit |
 
 With nothing marked, `c` copies whatever the cursor is on. Direction follows focus:
 the focused pane is always the source, so `c` from the right pane pulls down, and `c`
 from the left pane pushes up.
+
+Sorting is per pane, so the two sides can be ordered differently — newest-first on the
+remote while the local stays alphabetical, say. Directories stay above files in every
+mode, reversed or not, and the pane's status line names the mode and which way it runs.
+Size and modified start at the end you went looking for (biggest, newest); `S` flips
+them. Kind sorts on the extension, so files of a type land together.
 
 ## Typing a path
 

@@ -4,6 +4,17 @@ All notable changes to snag are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.2] - 2026-08-21
+
+### Added
+
+- **Sort modes.** `s` cycles the focused pane through name, size, kind, and modified,
+  wrapping round; `S` reverses whichever is current. Size and modified open at the end
+  worth looking at — biggest file, newest run — and kind groups by extension.
+  Directories stay above files in every mode, the cursor keeps its entry across a
+  re-sort, and each pane's status line names its mode and direction. Sorting is per
+  pane, so the two sides can be ordered differently.
+
 ## [1.0.1] - 2026-08-12
 
 ### Added
@@ -99,5 +110,6 @@ First stable release. Everything below is what snag does today.
 - `rsync` must exist locally and on each server; macOS's built-in `openrsync` and GNU
   rsync both work, and snag adapts its progress parsing to whichever it finds.
 
+[1.0.2]: https://github.com/EthanLowenthal/snag/releases/tag/v1.0.2
 [1.0.1]: https://github.com/EthanLowenthal/snag/releases/tag/v1.0.1
 [1.0.0]: https://github.com/EthanLowenthal/snag/releases/tag/v1.0.0

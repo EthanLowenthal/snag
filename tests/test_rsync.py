@@ -48,3 +48,47 @@ def test_unreachable_host_error(monkeypatch):
     message = str(caught.value)
     assert "connect to host" in message, message
     assert "unexpected end of file" not in message, message
+
+
+def _entry(name: str, size: int = 0, mtime: float = 0.0, is_dir: bool = False):
+    return rsync_mod.Entry(name=name, is_dir=is_dir, size=size, mtime=mtime)
+
+
+def test_sort_modes_order_entries():
+    entries = [
+        _entry("beta.txt", size=30, mtime=300),
+        _entry("zulu", is_dir=True),
+        _entry("alpha.zip", size=10, mtime=100),
+        _entry("archive", is_dir=True),
+        _entry("gamma.txt", size=20, mtime=200),
+        _entry(".rc", size=5, mtime=50),
+    ]
+
+    def order(mode, reverse=False):
+        return [e.name for e in rsync_mod.sort_entries(entries, mode, reverse)]
+
+    assert order("name") == ["archive", "zulu", ".rc", "alpha.zip", "beta.txt", "gamma.txt"]
+    # Biggest first, because that is what someone sorting by size came looking for.
+    assert order("size") == ["archive", "zulu", "beta.txt", "gamma.txt", "alpha.zip", ".rc"]
+    assert order("modified") == ["archive", "zulu", "beta.txt", "gamma.txt", "alpha.zip", ".rc"]
+    # Extension, then name inside it; a leading dot is not an extension.
+    assert order("kind") == ["archive", "zulu", ".rc", "beta.txt", "gamma.txt", "alpha.zip"]
+
+    assert order("size", reverse=True) == [
+        "zulu", "archive", ".rc", "alpha.zip", "gamma.txt", "beta.txt"
+    ], "reverse did not flip both groups"
+    for mode in rsync_mod.SORT_MODES:
+        listed = rsync_mod.sort_entries(entries, mode, reverse=True)
+        assert [e.name for e in listed[:2]] == ["zulu", "archive"], (
+            f"{mode} reversed let a file above a directory"
+        )
+        assert sorted(e.name for e in listed) == sorted(e.name for e in entries), (
+            f"{mode} lost or duplicated an entry"
+        )
+
+
+def test_sort_labels_show_the_real_direction():
+    assert rsync_mod.sort_label("name", False) == "name ↑"
+    assert rsync_mod.sort_label("name", True) == "name ↓"
+    assert rsync_mod.sort_label("size", False) == "size ↓"
+    assert rsync_mod.sort_label("modified", True) == "modified ↑"

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 import snag.app as app_mod
 from snag import config as cfg_mod
 from snag.rsync import Transfer
@@ -155,3 +157,60 @@ async def test_cancel_and_resume(remote_server, monkeypatch):
         assert await settle(pilot, finished, tries=600), "resumed transfer never finished"
         assert partial.stat().st_size == size, f"{partial.stat().st_size:,} of {size:,}"
         assert partial.read_bytes() == (remote / "capture.raw").read_bytes(), "content differs"
+
+
+async def test_sort_modes_cycle(remote_server):
+    """`s` walks the modes, `S` flips direction, and the cursor stays where it was."""
+    _, remote = remote_server("s-box", big=8_000_000)
+    (remote / "aaa.log").write_bytes(b"x" * 5_000)
+    # Distinct sizes, extensions, and mtimes, so every mode gives a different order.
+    for name, when in (("capture.raw", 1000), ("summary.json", 2000), ("aaa.log", 3000)):
+        os.utime(remote / name, (when, when))
+
+    app = app_mod.SnagApp()
+    async with app.run_test(size=(110, 32)) as pilot:
+        await pilot.pause()
+        await pilot.press("enter")
+        await settle(
+            pilot,
+            lambda: isinstance(app.screen, app_mod.BrowserScreen)
+            and bool(app.screen.remote_pane.entries),
+        )
+        pane = app.screen.remote_pane
+        await pilot.press("tab")
+        await pilot.pause()
+        assert app.screen.focused_pane is pane, "tab did not move focus to the remote"
+
+        expected = {
+            "name": ["logs", "aaa.log", "capture.raw", "summary.json"],
+            "size": ["logs", "capture.raw", "aaa.log", "summary.json"],
+            "kind": ["logs", "summary.json", "aaa.log", "capture.raw"],
+            "modified": ["logs", "aaa.log", "summary.json", "capture.raw"],
+        }
+        assert pane.sort_mode == "name", "panes should open sorted by name"
+        for mode in ("name", "size", "kind", "modified", "name"):
+            assert pane.sort_mode == mode, f"cycle landed on {pane.sort_mode}, wanted {mode}"
+            assert names(pane) == expected[mode], f"{mode}: {names(pane)}"
+            await pilot.press("s")
+            await pilot.pause()
+
+        # The loop pressed `s` on its way out of "name", so the pane is on "size" now.
+        await pilot.press("S")
+        await pilot.pause()
+        assert names(pane) == ["logs", "summary.json", "aaa.log", "capture.raw"], (
+            f"reversed size did not run smallest first: {names(pane)}"
+        )
+
+        status = pane.query_one(".pane-status", app_mod.Static).render()
+        assert "size ↑" in str(status), f"status does not show the sort: {status}"
+
+        pane.table.move_cursor(row=names(pane).index("summary.json") + 1)
+        await pilot.press("s")
+        await pilot.pause()
+        assert pane.current() is not None and pane.current().name == "summary.json", (
+            "re-sorting moved the cursor off the entry it was on"
+        )
+
+        assert pane.sort_mode == "kind" and app.screen.local_pane.sort_mode == "name", (
+            "sorting one pane changed the other"
+        )

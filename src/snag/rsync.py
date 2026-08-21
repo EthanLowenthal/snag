@@ -71,6 +71,40 @@ class Entry:
     def sort_key(self) -> tuple:
         return (not self.is_dir, self.name.lower())
 
+    @property
+    def kind(self) -> str:
+        """The extension a listing sorts by; directories and dotfiles have none."""
+        stem, dot, ext = self.name.rpartition(".")
+        return ext.lower() if dot and stem and not self.is_dir else ""
+
+
+# Cycle order for the sort toggle, and the label each mode shows in the pane status.
+SORT_MODES = ("name", "size", "kind", "modified")
+
+# Size and modified lead with the end people actually go looking for — the biggest
+# file, the newest run -- so their natural order is descending; reversing flips them.
+_SORT_KEYS = {
+    "name": lambda e: (e.name.lower(),),
+    "size": lambda e: (-e.size, e.name.lower()),
+    "kind": lambda e: (e.kind, e.name.lower()),
+    "modified": lambda e: (-(e.mtime or 0.0), e.name.lower()),
+}
+
+
+def sort_label(mode: str, reverse: bool) -> str:
+    """`size ↓` — the mode plus the direction its primary key actually runs in."""
+    descending = (mode in ("size", "modified")) != reverse
+    return f"{mode} {'\u2193' if descending else '\u2191'}"
+
+
+def sort_entries(entries: list[Entry], mode: str = "name", reverse: bool = False) -> list[Entry]:
+    """Order a listing. Directories stay on top in every mode, reversed or not."""
+    key = _SORT_KEYS.get(mode, _SORT_KEYS["name"])
+    dirs = [e for e in entries if e.is_dir]
+    files = [e for e in entries if not e.is_dir]
+    return (sorted(dirs, key=key, reverse=reverse)
+            + sorted(files, key=key, reverse=reverse))
+
 
 @lru_cache(maxsize=1)
 def supports_progress2() -> bool:

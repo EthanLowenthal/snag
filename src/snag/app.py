@@ -32,7 +32,19 @@ from . import config
 from .cli import Start, expand_remote
 from .config import Server
 from .pathbar import Completions, PathInput, entry_style
-from .rsync import Entry, Progress, RsyncError, Transfer, local_list, measure, remote_home, remote_list
+from .rsync import (
+    SORT_MODES,
+    Entry,
+    Progress,
+    RsyncError,
+    Transfer,
+    local_list,
+    measure,
+    remote_home,
+    remote_list,
+    sort_entries,
+    sort_label,
+)
 
 UNITS = ["B", "K", "M", "G", "T", "P"]
 
@@ -82,6 +94,8 @@ class FilePane(Vertical):
         self.rows: list[Entry | None] = []  # index 0 is the ".." row
         self.marked: set[str] = set()
         self.show_hidden = False
+        self.sort_mode = SORT_MODES[0]
+        self.sort_reverse = False
         self.status = "connecting…" if not autoload else ""
         self._generation = 0
         self.home: str | None = None if side == "remote" else str(Path.home())
@@ -147,6 +161,7 @@ class FilePane(Vertical):
             visible = len(self.rows) - 1
             hidden = len(self.entries) - visible
             bits.append(f"{visible} items" + (f" · {hidden} hidden" if hidden > 0 else ""))
+            bits.append(sort_label(self.sort_mode, self.sort_reverse))
             if self.marked:
                 marked_bytes = sum(e.size for e in self.entries if e.name in self.marked)
                 bits.append(f"[{len(self.marked)} marked · {format_size(marked_bytes)}]")
@@ -162,9 +177,10 @@ class FilePane(Vertical):
         return Text("▌", style="bold #e0af68") if entry.name in self.marked else Text(" ")
 
     def _visible(self) -> list[Entry]:
-        if self.show_hidden:
-            return self.entries
-        return [e for e in self.entries if not e.name.startswith(".")]
+        shown = self.entries if self.show_hidden else [
+            e for e in self.entries if not e.name.startswith(".")
+        ]
+        return sort_entries(shown, self.sort_mode, self.sort_reverse)
 
     def _populate(self, keep: str | None = None) -> None:
         table = self.table
@@ -363,6 +379,20 @@ class FilePane(Vertical):
 
     def toggle_hidden(self) -> None:
         self.show_hidden = not self.show_hidden
+        self._resort()
+
+    def cycle_sort(self, step: int = 1) -> None:
+        """Step to the next sort mode, wrapping round the end of the cycle."""
+        index = SORT_MODES.index(self.sort_mode) if self.sort_mode in SORT_MODES else 0
+        self.sort_mode = SORT_MODES[(index + step) % len(SORT_MODES)]
+        self._resort()
+
+    def reverse_sort(self) -> None:
+        self.sort_reverse = not self.sort_reverse
+        self._resort()
+
+    def _resort(self) -> None:
+        """Redraw the rows, keeping the cursor on whatever entry it was already on."""
         entry = self.current()
         self._populate(keep=entry.name if entry else None)
 
@@ -464,6 +494,9 @@ class BrowserScreen(Screen):
         Binding("tilde", "home", "Home", show=False),
         Binding("r", "refresh", "Refresh"),
         Binding("full_stop", "hidden", "Hidden"),
+        Binding("s", "sort", "Sort"),
+        # The pane status already names the direction, and the footer clips as it is.
+        Binding("S", "sort_reverse", "Reverse", show=False),
         Binding("x", "cancel", "Cancel"),
         Binding("X", "clear_done", "Clear done", show=False),
         Binding("escape", "servers", "Servers"),
@@ -663,6 +696,12 @@ class BrowserScreen(Screen):
 
     def action_hidden(self) -> None:
         self.focused_pane.toggle_hidden()
+
+    def action_sort(self) -> None:
+        self.focused_pane.cycle_sort()
+
+    def action_sort_reverse(self) -> None:
+        self.focused_pane.reverse_sort()
 
     def action_servers(self) -> None:
         self.app.pop_screen()
